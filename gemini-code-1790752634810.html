@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ตะลุยป่า ล่าสมบัติ - เกมภาษาไทย ป.4</title>
+    
+    <!-- นำเข้า MediaPipe Hands -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&family=Mitr:wght@500&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary: #2d5a27;
+            --accent: #f1c40f;
+            --danger: #e74c3c;
+            --success: #2ecc71;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Sarabun', sans-serif;
+            background-color: #000;
+        }
+
+        /* --- หน้าเริ่มเกม --- */
+        #start-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: url('https://png.pngtree.com/background/20250109/original/pngtree-amazon-jungle-nature-wallpaper-picture-image_15424855.jpg') no-repeat center center;
+            background-size: cover;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            z-index: 100;
+            padding-bottom: 80px;
+        }
+
+        .btn-start {
+            padding: 25px 60px;
+            font-size: 32px;
+            font-family: 'Mitr', sans-serif;
+            background: linear-gradient(to bottom, #4CAF50, #2E7D32);
+            color: white;
+            border: 4px solid #fff;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .btn-start:hover {
+            transform: scale(1.1);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.6);
+        }
+
+        /* --- หน้าเล่นเกม --- */
+        #game-container {
+            display: none;
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .header-box {
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            text-align: center;
+            padding: 15px;
+            font-size: 28px;
+            border-bottom: 4px solid var(--accent);
+            font-family: 'Mitr', sans-serif;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 30px;
+            font-size: 24px;
+            color: white;
+            text-shadow: 2px 2px 4px #000;
+        }
+
+        .exit-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 25px;
+            background: var(--danger);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            pointer-events: auto;
+            font-weight: bold;
+        }
+
+        /* --- หน้าสรุปผล --- */
+        #result-screen {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            max-width: 500px;
+            background: white;
+            border-radius: 30px;
+            padding: 40px;
+            text-align: center;
+            z-index: 200;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+            font-family: 'Mitr', sans-serif;
+        }
+
+        .result-title { font-size: 40px; color: var(--primary); margin-bottom: 20px; }
+        .score-row { font-size: 24px; margin: 10px 0; }
+        .medal { font-size: 80px; margin: 20px 0; }
+        .feedback { font-size: 20px; color: #666; margin-bottom: 30px; line-height: 1.5; }
+        .btn-group { display: flex; gap: 10px; justify-content: center; }
+        .btn-ui {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 18px;
+            color: white;
+        }
+        .btn-replay { background: var(--success); }
+        .btn-home { background: #555; }
+
+        /* --- Loading Overlay --- */
+        #loading {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            font-size: 24px;
+        }
+
+        #score-float {
+            position: absolute;
+            font-weight: bold;
+            font-size: 40px;
+            pointer-events: none;
+            z-index: 50;
+            animation: floatUp 0.8s ease-out forwards;
+        }
+
+        @keyframes floatUp {
+            0% { transform: translateY(0); opacity: 1; }
+            100% { transform: translateY(-100px); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Loading -->
+    <div id="loading">กำลังเตรียมความพร้อมของ AI...</div>
+
+    <!-- หน้าเริ่มเกม -->
+    <div id="start-screen">
+        <button class="btn-start" onclick="initGame()">เริ่มเกม</button>
+    </div>
+
+    <!-- หน้าเล่นเกม -->
+    <div id="game-container">
+        <video id="input_video" style="display:none;"></video>
+        <canvas id="game_canvas"></canvas>
+        
+        <div id="ui-layer">
+            <div class="header-box">เจาะลูกโป่งที่เป็น "ข้อเท็จจริง"</div>
+            <div class="stats">
+                <div>คะแนน: <span id="score">0</span></div>
+                <div>เวลา: <span id="timer">60</span> วินาที</div>
+            </div>
+            <button class="exit-btn" onclick="exitGame()">ออกจากเกม</button>
+        </div>
+    </div>
+
+    <!-- หน้าสรุปผล -->
+    <div id="result-screen">
+        <div class="result-title">จบการสำรวจ!</div>
+        <div class="medal" id="medal">🥇</div>
+        <div id="rank-text" style="font-size: 28px; font-weight: bold; margin-bottom: 10px;">ยอดเยี่ยมมาก!</div>
+        <div class="score-row">คะแนนรวม: <span id="final-score">0</span></div>
+        <div class="score-row" style="color: var(--success);">ถูก: <span id="correct-count">0</span> | <span style="color: var(--danger);">ผิด: <span id="wrong-count">0</span></span></div>
+        <p class="feedback" id="feedback-text">คุณคือสุดยอดนักสำรวจป่า!</p>
+        <div class="btn-group">
+            <button class="btn-ui btn-replay" onclick="resetGame()">เล่นอีกครั้ง</button>
+            <button class="btn-ui btn-home" onclick="exitGame()">กลับหน้าแรก</button>
+        </div>
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('game_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const timerEl = document.getElementById('timer');
+
+        // ข้อมูลโจทย์
+        const facts = [
+            "สุนัขเป็นสัตว์เลี้ยงลูกด้วยนม", "ประเทศไทยมีกรุงเทพฯ เป็นเมืองหลวง", "ดวงอาทิตย์ขึ้นทางทิศตะวันออก",
+            "น้ำแข็งเกิดจากน้ำที่แข็งตัว", "โลกหมุนรอบดวงอาทิตย์", "คนเรามีอวัยวะที่เรียกว่า หัวใจ",
+            "ช้างเป็นสัตว์เลี้ยงลูกด้วยนม", "สัปดาห์หนึ่งมี 7 วัน", "หนึ่งปีมี 12 เดือน",
+            "เดือนกุมภาพันธ์มี 28 หรือ 29 วัน", "ประเทศไทยมี 77 จังหวัด", "พระอาทิตย์เป็นดาวฤกษ์",
+            "ภาษาไทยมีพยัญชนะ 44 ตัว", "สีธงชาติไทยมี 3 สี"
+        ];
+
+        const opinions = [
+            "ภาษาไทยเป็นวิชาที่สนุกที่สุด", "การอ่านหนังสือก่อนนอนดีที่สุด", "ข้าวผัดเป็นอาหารที่อร่อยที่สุด",
+            "สุนัขเป็นสัตว์เลี้ยงที่น่ารักที่สุด", "สีฟ้าเป็นสีที่สวยที่สุด", "การปลูกต้นไม้สนุกมาก",
+            "ฤดูหนาวเป็นฤดูที่น่าเที่ยวที่สุด", "ไปโรงเรียนทุกวันน่าสนุก", "แมวน่ารักกว่าสุนัข",
+            "หนังสือเล่มนี้อ่านสนุกมาก", "ทำการบ้านตอนเช้าดีกว่าตอนเย็น", "กรุงเทพฯ เป็นเมืองที่น่าเที่ยว",
+            "การกินผักทำได้ง่าย", "วิชาศิลปะง่ายที่สุด", "เล่นฟุตบอลสนุกกว่าบาส", "ไอศกรีมช็อกโกแลตอร่อยที่สุด",
+            "อ่านนิทานช่วยให้เพลิดเพลิน"
+        ];
+
+        let score = 0;
+        let timeLeft = 60;
+        let gameActive = false;
+        let correctPopped = 0;
+        let wrongPopped = 0;
+        let balloons = [];
+        let particles = [];
+        let fingerPos = { x: 0, y: 0, active: false };
+        let gameTimer;
+        let camera = null;
+
+        // ระบบเสียง (แบบสังเคราะห์)
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playPopSound(isCorrect) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            if (isCorrect) {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.2);
+            } else {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(50, audioCtx.currentTime + 0.3);
+            }
+            
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.3);
+        }
+
+        // --- ระบบ Game Loop & Logic ---
+
+        class Balloon {
+            constructor() {
+                this.isCorrect = Math.random() > 0.4;
+                this.text = this.isCorrect ? 
+                    facts[Math.floor(Math.random() * facts.length)] : 
+                    opinions[Math.floor(Math.random() * opinions.length)];
+                this.radius = 85;
+                this.x = Math.random() * (canvasElement.width - this.radius * 2) + this.radius;
+                this.y = canvasElement.height + this.radius;
+                this.color = `hsl(${Math.random() * 360}, 70%, 60%)`;
+                this.speed = (Math.random() * 2 + 1.5) + ((60 - timeLeft) / 20); // เร็วขึ้นตามเวลา
+                this.popped = false;
+            }
+
+            draw() {
+                canvasCtx.save();
+                // วาดตัวลูกโป่ง
+                canvasCtx.beginPath();
+                canvasCtx.fillStyle = this.color;
+                canvasCtx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                canvasCtx.fill();
+                
+                // วาดจุก
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(this.x, this.y + this.radius);
+                canvasCtx.lineTo(this.x - 10, this.y + this.radius + 15);
+                canvasCtx.lineTo(this.x + 10, this.y + this.radius + 15);
+                canvasCtx.fill();
+
+                // วาดข้อความ (Mirror Fix)
+                canvasCtx.scale(-1, 1);
+                canvasCtx.fillStyle = "white";
+                canvasCtx.font = "bold 20px Sarabun";
+                canvasCtx.textAlign = "center";
+                
+                // ตัดคำสั้นๆ
+                const words = this.text.match(/.{1,15}/g);
+                words.forEach((line, i) => {
+                    canvasCtx.fillText(line, -this.x, this.y + (i * 25) - (words.length * 10));
+                });
+                
+                canvasCtx.restore();
+            }
+
+            update() {
+                this.y -= this.speed;
+                if (this.y < -this.radius) this.popped = true;
+
+                // ตรวจสอบการเจาะด้วยนิ้ว
+                if (fingerPos.active) {
+                    const dist = Math.hypot(this.x - fingerPos.x, this.y - fingerPos.y);
+                    if (dist < this.radius + 10) {
+                        this.pop();
+                    }
+                }
+            }
+
+            pop() {
+                this.popped = true;
+                playPopSound(this.isCorrect);
+                createParticles(this.x, this.y, this.color);
+                
+                if (this.isCorrect) {
+                    score += 10;
+                    correctPopped++;
+                    showFloatingText("+10", this.x, this.y, "var(--success)");
+                } else {
+                    score = Math.max(0, score - 5);
+                    wrongPopped++;
+                    showFloatingText("-5", this.x, this.y, "var(--danger)");
+                }
+                scoreEl.innerText = score;
+            }
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 12; i++) {
+                particles.push({
+                    x, y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 1.0,
+                    color
+                });
+            }
+        }
+
+        function showFloatingText(txt, x, y, color) {
+            const el = document.createElement('div');
+            el.id = 'score-float';
+            el.innerText = txt;
+            el.style.left = x + 'px';
+            el.style.top = y + 'px';
+            el.style.color = color;
+            document.getElementById('game-container').appendChild(el);
+            setTimeout(() => el.remove(), 800);
+        }
+
+        // --- ระบบ AI Tracking ---
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults((results) => {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            // วาดกล้อง (Mirror)
+            canvasCtx.scale(-1, 1);
+            canvasCtx.translate(-canvasElement.width, 0);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmark = results.multiHandLandmarks[0][8]; // ปลายนิ้วชี้
+                fingerPos.x = (1 - landmark.x) * canvasElement.width; // กลับด้านพิกัด
+                fingerPos.y = landmark.y * canvasElement.height;
+                fingerPos.active = true;
+
+                // วาดวงแหวนที่นิ้ว
+                canvasCtx.restore();
+                canvasCtx.beginPath();
+                canvasCtx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+                canvasCtx.lineWidth = 5;
+                canvasCtx.arc(fingerPos.x, fingerPos.y, 25, 0, Math.PI * 2);
+                canvasCtx.stroke();
+                
+                canvasCtx.beginPath();
+                canvasCtx.fillStyle = "rgba(241, 196, 15, 0.5)";
+                canvasCtx.arc(fingerPos.x, fingerPos.y, 15, 0, Math.PI * 2);
+                canvasCtx.fill();
+                canvasCtx.save();
+                canvasCtx.scale(-1, 1);
+                canvasCtx.translate(-canvasElement.width, 0);
+            } else {
+                fingerPos.active = false;
+            }
+
+            if (gameActive) {
+                // Update Balloons
+                if (Math.random() < 0.025) balloons.push(new Balloon());
+                balloons = balloons.filter(b => {
+                    b.update();
+                    b.draw();
+                    return !b.popped;
+                });
+
+                // Update Particles
+                particles = particles.filter(p => {
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.life -= 0.02;
+                    canvasCtx.globalAlpha = p.life;
+                    canvasCtx.fillStyle = p.color;
+                    canvasCtx.fillRect(p.x, p.y, 8, 8);
+                    return p.life > 0;
+                });
+                canvasCtx.globalAlpha = 1;
+            }
+            canvasCtx.restore();
+        });
+
+        // --- ระบบควบคุมเกม ---
+
+        async function initGame() {
+            document.getElementById('loading').style.display = 'flex';
+            try {
+                if (!camera) {
+                    camera = new Camera(videoElement, {
+                        onFrame: async () => {
+                            await hands.send({ image: videoElement });
+                        },
+                        width: 1280,
+                        height: 720
+                    });
+                    await camera.start();
+                }
+                
+                canvasElement.width = window.innerWidth;
+                canvasElement.height = window.innerHeight;
+                
+                document.getElementById('start-screen').style.display = 'none';
+                document.getElementById('game-container').style.display = 'block';
+                document.getElementById('loading').style.display = 'none';
+                
+                resetGame();
+            } catch (err) {
+                alert("กรุณาอนุญาตการเข้าถึงกล้องเพื่อเล่นเกม");
+                location.reload();
+            }
+        }
+
+        function resetGame() {
+            score = 0;
+            timeLeft = 60;
+            correctPopped = 0;
+            wrongPopped = 0;
+            balloons = [];
+            particles = [];
+            gameActive = true;
+            scoreEl.innerText = '0';
+            timerEl.innerText = '60';
+            document.getElementById('result-screen').style.display = 'none';
+            
+            if (gameTimer) clearInterval(gameTimer);
+            gameTimer = setInterval(() => {
+                if (!gameActive) return;
+                timeLeft--;
+                timerEl.innerText = timeLeft;
+                if (timeLeft <= 0) endGame();
+            }, 1000);
+        }
+
+        function endGame() {
+            gameActive = false;
+            clearInterval(gameTimer);
+            
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('correct-count').innerText = correctPopped;
+            document.getElementById('wrong-count').innerText = wrongPopped;
+            
+            const medalEl = document.getElementById('medal');
+            const rankText = document.getElementById('rank-text');
+            const feedbackText = document.getElementById('feedback-text');
+            
+            if (score >= 100) {
+                medalEl.innerText = "🥇";
+                rankText.innerText = "ระดับ: GOLD";
+                feedbackText.innerText = "เยี่ยมมาก! คุณคือสุดยอดนักสำรวจระบบภาษาไทย";
+            } else if (score >= 60) {
+                medalEl.innerText = "🥈";
+                rankText.innerText = "ระดับ: SILVER";
+                feedbackText.innerText = "เก่งมาก! อีกนิดเดียวจะเป็นยอดฝีมือแล้ว";
+            } else {
+                medalEl.innerText = "🥉";
+                rankText.innerText = "ระดับ: BRONZE";
+                feedbackText.innerText = "สู้ๆ นะ! ลองฝึกทบทวนเรื่องข้อเท็จจริงอีกครั้ง";
+            }
+            
+            document.getElementById('result-screen').style.display = 'block';
+        }
+
+        function exitGame() {
+            gameActive = false;
+            clearInterval(gameTimer);
+            document.getElementById('game-container').style.display = 'none';
+            document.getElementById('result-screen').style.display = 'none';
+            document.getElementById('start-screen').style.display = 'flex';
+        }
+
+        window.onresize = () => {
+            canvasElement.width = window.innerWidth;
+            canvasElement.height = window.innerHeight;
+        };
+    </script>
+</body>
+</html>
